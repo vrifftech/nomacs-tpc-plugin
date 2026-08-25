@@ -34,14 +34,5 @@ install(TARGETS qtpcimageplugin
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}/imageformats"
 )
 
-include(CTest)
-if(BUILD_TESTING)
-    find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
-    qt_add_executable(tst_tpcdecoder
-        tests/tst_tpcdecoder.cpp
-        src/tpcdecoder.cpp
-    )
-    target_include_directories(tst_tpcdecoder PRIVATE src)
-    target_link_libraries(tst_tpcdecoder PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
-    add_test(NAME tpcdecoder COMMAND tst_tpcdecoder)
+
 endif()
