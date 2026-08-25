@@ -95,7 +95,7 @@ jobs:
 
       - name: Package
         shell: bash
-        run: ./ci/package-unix.sh "${{ matrix.platform }}" build dist
+        run: bash ./ci/package-unix.sh "${{ matrix.platform }}" build dist
 
       - name: Upload package
         uses: actions/upload-artifact@v4
