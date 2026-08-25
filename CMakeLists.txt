@@ -33,6 +33,3 @@ install(TARGETS qtpcimageplugin
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/qt6/plugins/imageformats"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}/imageformats"
 )
-
-
-endif()
