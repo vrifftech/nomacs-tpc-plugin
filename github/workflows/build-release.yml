@@ -1,0 +1,200 @@
+name: Build and release TPC plugin
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: "6.9.3"
+  BUILD_TYPE: Release
+
+jobs:
+  unix:
+    name: ${{ matrix.display_name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - display_name: Linux x86_64
+            runner: ubuntu-24.04
+            platform: linux-x86_64
+            qt_arch: linux_gcc_64
+            cmake_arch: ""
+          - display_name: macOS Apple Silicon
+            runner: macos-15
+            platform: macos-arm64
+            qt_arch: clang_64
+            cmake_arch: arm64
+          - display_name: macOS Intel
+            runner: macos-15-intel
+            platform: macos-x86_64
+            qt_arch: clang_64
+            cmake_arch: x86_64
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          target: desktop
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+          install-deps: true
+
+      - name: Configure
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            -S .
+            -B build
+            -G Ninja
+            "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
+            -DBUILD_TESTING=ON
+          )
+          if [[ -n "${{ matrix.cmake_arch }}" ]]; then
+            args+=("-DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }}")
+          fi
+          cmake "${args[@]}"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --build-config "${{ env.BUILD_TYPE }}" --output-on-failure
+
+      - name: Inspect binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          plugin="$(find build -type f \( -name 'libqtpc*.so' -o -name 'libqtpc*.dylib' \) ! -path '*/CMakeFiles/*' -print -quit)"
+          if [[ -z "$plugin" ]]; then
+            echo "qtpc plugin binary was not found" >&2
+            find build -type f -print
+            exit 1
+          fi
+          file "$plugin"
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            otool -L "$plugin"
+            codesign --force --sign - "$plugin"
+          else
+            ldd "$plugin"
+          fi
+
+      - name: Package
+        shell: bash
+        run: ./ci/package-unix.sh "${{ matrix.platform }}" build dist
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt-tpc-image-plugin-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+          install-deps: true
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Test
+        run: ctest --test-dir build --build-config ${{ env.BUILD_TYPE }} --output-on-failure
+
+      - name: Package
+        shell: pwsh
+        run: ./ci/package-windows.ps1 -Platform windows-x86_64 -BuildDirectory build -OutputDirectory dist
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt-tpc-image-plugin-windows-x86_64
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - unix
+      - windows
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: qt-tpc-image-plugin-*
+          merge-multiple: true
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum qt-tpc-image-plugin-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload combined release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ github.ref_name }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Create or update release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" dist/* \
+              --verify-tag \
+              --generate-notes \
+              --title "$tag" \
+              --repo "$GITHUB_REPOSITORY"
+          fi
