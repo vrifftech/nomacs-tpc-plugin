@@ -10,7 +10,7 @@ viewer and thumbnail pipeline.
 
 - PC TPC header validation
 - Uncompressed grayscale, RGB, and RGBA
-- BGRA encoding `0x0C`, including xoreos-compatible de-swizzling
+- BGRA encoding `0x0C`
 - BC1 / DXT1
 - BC3 / DXT5
 - Top-level mip image
