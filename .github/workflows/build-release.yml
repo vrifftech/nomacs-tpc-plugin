@@ -98,7 +98,7 @@ jobs:
         run: bash ./ci/package-unix.sh "${{ matrix.platform }}" build dist
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qt-tpc-image-plugin-${{ matrix.platform }}
           path: dist/*
@@ -141,7 +141,7 @@ jobs:
         run: ./ci/package-windows.ps1 -Platform windows-x86_64 -BuildDirectory build -OutputDirectory dist
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qt-tpc-image-plugin-windows-x86_64
           path: dist/*
@@ -175,7 +175,7 @@ jobs:
           cat SHA256SUMS.txt
 
       - name: Upload combined release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-${{ github.ref_name }}
           path: dist/*
